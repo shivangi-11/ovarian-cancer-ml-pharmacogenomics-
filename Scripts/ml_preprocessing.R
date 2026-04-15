@@ -1,5 +1,5 @@
 # =============================================================================
-#  Data Retrieval, Pre-processing, Batch Effect Correction & PCA
+ Data Retrieval, Pre-processing, Batch Effect Correction & PCA
 # =============================================================================
 
 # --- 1. Install and load required packages ---
@@ -15,15 +15,26 @@ invisible(lapply(pkgs, function(p) {
   library(p, character.only = TRUE)
 }))
 
+# Logging function
+log_message <- function(message, file = "logs/preprocess.log") {
+  dir.create("logs", showWarnings = FALSE)
+  timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  cat(sprintf("[%s] %s\n", timestamp, message), file = file, append = TRUE)
+}
+
+log_message("Starting data preprocessing and batch correction")
+
 set.seed(123)
 
-# --- 2. Load raw datasets 
+# --- 2. Load raw datasets (place in data/raw/) ---
 log_message("Loading raw PharmacoSets")
-CCLE <- readRDS("data/raw/CCLE.rds")
-GDSC <- readRDS("data/raw/GDSC2.rds")
+CCLE <- readRDS("CCLE.rds")
+GDSC <- readRDS("GDSC2.rds")
 
 CCLE <- updateObject(CCLE)
 GDSC <- updateObject(GDSC)
+
+log_message("Datasets loaded and updated successfully")
 
 # --- 3. Helper functions ---
 validate_genes <- function(genes, dataset_name) {
@@ -67,11 +78,15 @@ filter_features <- function(data) {
   keep_rows <- feature_mad > mad_threshold
   data <- data[keep_rows, , drop = FALSE]
   
+  log_message(sprintf("MAD filtering: %d → %d genes", initial_genes, nrow(data)))
+  data
 }
 
 # --- 4. Preprocess individual dataset (RNA expression) ---
-preprocess_dataset <- function(pset, dataset_name, mDataType = "rna") 
-   se <- summarizeMolecularProfiles(pset, mDataType = mDataType, fill.missing = FALSE)
+preprocess_dataset <- function(pset, dataset_name, mDataType = "rna") {
+  log_message(sprintf("Preprocessing RNA expression for %s", dataset_name))
+  
+  se <- summarizeMolecularProfiles(pset, mDataType = mDataType, fill.missing = FALSE)
   expr <- assay(se)
   
   log_message(sprintf("%s: %d genes × %d cell lines", dataset_name, nrow(expr), ncol(expr)))
@@ -119,9 +134,10 @@ process_and_plot_pca <- function(gdsc_data, ccle_data) {
   plot_pca(t(combined_data), t(corrected_data), nrow(gdsc_mat), nrow(ccle_mat))
   
   # Save processed matrices (key output files)
-  write.csv(t(combined_data), "/before_combat_GDSC_CCLE.csv", row.names = TRUE
-  write.csv(t(corrected_data), "/after_combat_GDSC_CCLE.csv", row.names = TRUE)
-
+  write.csv(t(combined_data), "before_combat_GDSC_CCLE.csv", row.names = TRUE)
+  write.csv(t(corrected_data), "after_combat_GDSC_CCLE.csv", row.names = TRUE)
+  
+  log_message("Batch correction and PCA completed. Files saved.")
 }
 
 plot_pca <- function(before_data, after_data, gdsc_n, ccle_n) {
@@ -165,3 +181,4 @@ if (!is.null(gdsc_processed) && !is.null(ccle_processed)) {
   process_and_plot_pca(gdsc_processed, ccle_processed)
 }
 
+log_message("Preprocessing, batch correction, and PCA plotting completed successfully")
