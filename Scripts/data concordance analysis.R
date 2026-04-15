@@ -105,7 +105,6 @@ common_drugs <- intersect(rownames(GDSC.aac), rownames(CCLE.aac))
 GDSC.aac <- GDSC.aac[common_drugs, , drop = FALSE]
 CCLE.aac <- CCLE.aac[common_drugs, , drop = FALSE]
 drugs <- common_drugs
-write.csv(GDSC_ic50, "common_drugs.csv")
 cat("Using", length(drugs), "common drugs and", ncol(GDSC.aac), "ovarian cell lines.\n")
 
 # --- 3. Consistency Analysis (2.1.2) - CI and mCI ---
@@ -207,7 +206,7 @@ for (drug in unique(correlation_results$Drug)) {
 # Combine into grid and save
 if (length(plot_list) > 0) {
   plot_grid <- patchwork::wrap_plots(plot_list, ncol = 3) +
-    patchwork::plot_annotation(title = "AAC Correlation Analyses Across Common Drugs")
+    patchwork::plot_annotation
   
   ggsave("scatterplot_correlation.jpg", plot = plot_grid, 
          width = 15, height = 12, dpi = 600, bg = "white")
