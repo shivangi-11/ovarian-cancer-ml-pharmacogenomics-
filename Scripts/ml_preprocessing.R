@@ -1,81 +1,167 @@
-# ==============================
-# Data Preprocessing & PCA Analysis
-# ==============================
+# =============================================================================
+#  Data Retrieval, Pre-processing, Batch Effect Correction & PCA
+# =============================================================================
 
-suppressPackageStartupMessages({
-  library(PharmacoGx)
-  library(sva)
-  library(ggplot2)
-  library(VIM)
-})
+# --- 1. Install and load required packages ---
+pkgs <- c("PharmacoGx", "dplyr", "ggplot2", "VIM", "sva", "biomaRt", "Biobase", "SummarizedExperiment")
+invisible(lapply(pkgs, function(p) {
+  if (!requireNamespace(p, quietly = TRUE)) {
+    if (p %in% c("PharmacoGx", "sva", "biomaRt")) {
+      BiocManager::install(p, update = FALSE, ask = FALSE)
+    } else {
+      install.packages(p)
+    }
+  }
+  library(p, character.only = TRUE)
+}))
 
 set.seed(123)
 
-# ------------------------------
-# Load datasets (user-defined paths)
-# ------------------------------
-CCLE <- readRDS("path_to_CCLE.rds")
-GDSC <- readRDS("path_to_GDSC.rds")
+# --- 2. Load raw datasets 
+log_message("Loading raw PharmacoSets")
+CCLE <- readRDS("data/raw/CCLE.rds")
+GDSC <- readRDS("data/raw/GDSC2.rds")
 
 CCLE <- updateObject(CCLE)
 GDSC <- updateObject(GDSC)
 
-# ------------------------------
-# Extract RNA expression
-# ------------------------------
-extract_expression <- function(dataset) {
-  se <- summarizeMolecularProfiles(dataset, mDataType="rna")
+# --- 3. Helper functions ---
+validate_genes <- function(genes, dataset_name) {
+  log_message(sprintf("Validating gene IDs for %s", dataset_name))
+  tryCatch({
+    mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+    gene_mapping <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
+                          filters = "ensembl_gene_id",
+                          values = head(genes, 10), mart = mart)
+    valid_count <- sum(gene_mapping$hgnc_symbol != "")
+    log_message(sprintf("Validated %d/10 sampled gene IDs for %s", valid_count, dataset_name))
+  }, error = function(e) {
+    log_message(sprintf("Gene validation skipped for %s: %s", dataset_name, conditionMessage(e)))
+  })
+}
+
+normalize_data <- function(expr) {
+  expr <- expr + 1
+  expr <- log2(expr)
+  t(scale(t(expr)))
+}
+
+filter_features <- function(data) {
+  log_message("Applying MAD-based feature filtering on combined data")
+  initial_genes <- nrow(data)
+  
+  feature_mad <- apply(data, 1, function(x) {
+    if (sum(!is.na(x)) < 2) return(NA)
+    med <- median(x, na.rm = TRUE)
+    if (is.na(med)) return(NA)
+    mad_val <- median(abs(x - med), na.rm = TRUE)
+    if (is.na(mad_val) || mad_val == 0) return(NA)
+    mad_val
+  })
+  
+  valid_rows <- !is.na(feature_mad)
+  data <- data[valid_rows, , drop = FALSE]
+  feature_mad <- feature_mad[valid_rows]
+  
+  mad_threshold <- quantile(feature_mad, 0.05, na.rm = TRUE)
+  keep_rows <- feature_mad > mad_threshold
+  data <- data[keep_rows, , drop = FALSE]
+  
+}
+
+# --- 4. Preprocess individual dataset (RNA expression) ---
+preprocess_dataset <- function(pset, dataset_name, mDataType = "rna") 
+   se <- summarizeMolecularProfiles(pset, mDataType = mDataType, fill.missing = FALSE)
   expr <- assay(se)
   
-  # Log transform + scaling
-  expr <- log2(expr + 1)
-  expr <- t(scale(t(expr)))
+  log_message(sprintf("%s: %d genes × %d cell lines", dataset_name, nrow(expr), ncol(expr)))
+  validate_genes(rownames(expr), dataset_name)
   
-  return(expr)
+  # Simple KNN imputation if needed
+  if (any(is.na(expr))) {
+    log_message(sprintf("Imputing missing values in %s using kNN", dataset_name))
+    expr_t <- t(expr)
+    expr_imp <- VIM::kNN(as.data.frame(expr_t), k = 5, imp_var = FALSE)
+    expr <- t(as.matrix(expr_imp))
+  }
+  
+  list(data = as.data.frame(t(expr)), cells = colnames(expr), genes = rownames(expr))
 }
 
-expr_ccle <- extract_expression(CCLE)
-expr_gdsc <- extract_expression(GDSC)
-
-# ------------------------------
-# Common genes
-# ------------------------------
-common_genes <- intersect(rownames(expr_ccle), rownames(expr_gdsc))
-
-expr_ccle <- expr_ccle[common_genes, ]
-expr_gdsc <- expr_gdsc[common_genes, ]
-
-# ------------------------------
-# Combine datasets
-# ------------------------------
-combined <- cbind(expr_gdsc, expr_ccle)
-
-# ------------------------------
-# Batch correction (ComBat)
-# ------------------------------
-batch <- c(rep("GDSC", ncol(expr_gdsc)),
-           rep("CCLE", ncol(expr_ccle)))
-
-combat_data <- ComBat(dat=combined, batch=batch)
-
-# ------------------------------
-# PCA before and after
-# ------------------------------
-plot_pca <- function(data, title, filename) {
-  pca <- prcomp(t(data), scale.=TRUE)
+# --- 5. Batch correction + PCA ---
+process_and_plot_pca <- function(gdsc_data, ccle_data) {
+  log_message("Starting batch effect correction using ComBat")
   
-  df <- data.frame(PC1=pca$x[,1], PC2=pca$x[,2], Batch=batch)
+  common_genes <- intersect(colnames(gdsc_data$data), colnames(ccle_data$data))
+  log_message(sprintf("Common genes: %d", length(common_genes)))
   
-  p <- ggplot(df, aes(PC1, PC2, color=Batch)) +
-    geom_point(size=2) +
-    theme_minimal() +
-    ggtitle(title)
+  gdsc_mat <- gdsc_data$data[, common_genes, drop = FALSE]
+  ccle_mat <- ccle_data$data[, common_genes, drop = FALSE]
   
-  ggsave(filename, p, width=8, height=6, dpi=600)
+  # Combine for ComBat
+  combined_data <- rbind(t(gdsc_mat), t(ccle_mat))
+  
+  combined_data <- filter_features(combined_data)
+  
+  if (nrow(combined_data) < 100) {
+    log_message("Too few genes after filtering. Skipping ComBat.")
+    return(NULL)
+  }
+  
+  # ComBat batch correction
+  batch_labels <- c(rep("GDSC", nrow(gdsc_mat)), rep("CCLE", nrow(ccle_mat)))
+  corrected_data <- ComBat(dat = t(combined_data), batch = batch_labels, mod = NULL)
+  
+  # Normalize
+  corrected_data <- normalize_data(corrected_data)
+  
+  # Plot PCA before and after
+  plot_pca(t(combined_data), t(corrected_data), nrow(gdsc_mat), nrow(ccle_mat))
+  
+  # Save processed matrices (key output files)
+  write.csv(t(combined_data), "/before_combat_GDSC_CCLE.csv", row.names = TRUE
+  write.csv(t(corrected_data), "/after_combat_GDSC_CCLE.csv", row.names = TRUE)
+
 }
 
-plot_pca(combined, "Before ComBat", "plots/pca_before.png")
-plot_pca(combat_data, "After ComBat", "plots/pca_after.png")
+plot_pca <- function(before_data, after_data, gdsc_n, ccle_n) {
+  log_message("Generating PCA plots")
+  
+  pca_before <- prcomp(before_data, scale. = TRUE)
+  pca_after  <- prcomp(after_data,  scale. = TRUE)
+  
+  var_before <- summary(pca_before)$importance[2, 1:2] * 100
+  var_after  <- summary(pca_after)$importance[2, 1:2] * 100
+  
+  df_before <- data.frame(PC1 = pca_before$x[,1], PC2 = pca_before$x[,2],
+                          Batch = c(rep("GDSC", gdsc_n), rep("CCLE", ccle_n)))
+  df_after  <- data.frame(PC1 = pca_after$x[,1],  PC2 = pca_after$x[,2],
+                          Batch = c(rep("GDSC", gdsc_n), rep("CCLE", ccle_n)))
+  
+  p_before <- ggplot(df_before, aes(x = PC1, y = PC2, color = Batch)) +
+    geom_point(size = 1.8) + theme_minimal() +
+    labs(title = "PCA Before ComBat", 
+         x = sprintf("PC1 (%.1f%%)", var_before[1]),
+         y = sprintf("PC2 (%.1f%%)", var_before[2]))
+  
+  p_after <- ggplot(df_after, aes(x = PC1, y = PC2, color = Batch)) +
+    geom_point(size = 1.8) + theme_minimal() +
+    labs(title = "PCA After ComBat", 
+         x = sprintf("PC1 (%.1f%%)", var_after[1]),
+         y = sprintf("PC2 (%.1f%%)", var_after[2]))
+  
+  ggsave("PCA_Before_ComBat_GDSC_CCLE.png", p_before, width = 10, height = 8, dpi = 600)
+  ggsave("PCA_After_ComBat_GDSC_CCLE.png",  p_after,  width = 10, height = 8, dpi = 600)
+  
+  print(p_before)
+  print(p_after)
+}
 
-# Save processed data
-saveRDS(combat_data, "results/processed_expression.rds")
+# --- 6. Run preprocessing ---
+gdsc_processed <- preprocess_dataset(GDSC, "GDSC")
+ccle_processed <- preprocess_dataset(CCLE, "CCLE")
+
+if (!is.null(gdsc_processed) && !is.null(ccle_processed)) {
+  process_and_plot_pca(gdsc_processed, ccle_processed)
+}
+
