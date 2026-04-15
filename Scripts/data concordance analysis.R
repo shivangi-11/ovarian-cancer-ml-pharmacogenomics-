@@ -11,8 +11,8 @@ set.seed(123)
 # ------------------------------
 # Load datasets
 # ------------------------------
-CCLE <- readRDS("data/CCLE.rds")
-GDSC <- readRDS("data/GDSC.rds")
+CCLE <- readRDS("CCLE.rds")
+GDSC <- readRDS("GDSC.rds")
 
 CCLE <- updateObject(CCLE)
 GDSC <- updateObject(GDSC)
@@ -95,9 +95,9 @@ set.seed(123)
 
 # --- 2. Load pre-processed AAC data (from GitHub data) ---
 cat("Loading pre-processed AAC matrices...\n")
-GDSC.aac <- as.matrix(read.csv("data/GDSC_filtered_AAC_ovary.csv", 
+GDSC.aac <- as.matrix(read.csv("GDSC_filtered_AAC_ovary.csv", 
                                row.names = 1, check.names = FALSE))
-CCLE.aac <- as.matrix(read.csv("data/processed/CCLE_filtered_AAC_ovary.csv", 
+CCLE.aac <- as.matrix(read.csv("CCLE_filtered_AAC_ovary.csv", 
                                row.names = 1, check.names = FALSE))
 
 # Keep only common drugs
