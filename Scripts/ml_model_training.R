@@ -177,7 +177,7 @@ write.csv(model_metrics, "model_metrics.csv", row.names = FALSE)
 log_message("Model training completed successfully")
 
 cat("\n=== Model Training Complete ===\n")
-cat("Outputs saved in results/tables/ and results/plots/model_performance_plots.pdf\n")
+
 
 
 
