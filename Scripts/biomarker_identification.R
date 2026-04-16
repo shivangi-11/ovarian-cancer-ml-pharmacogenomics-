@@ -155,7 +155,7 @@ if (nrow(sig_results) > 0) {
       theme_pub +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
     
-    ggsave("results/plots/biomarker_bar_plot.pdf", bar_plot, width = 14, height = 9, dpi = 400)
+    ggsave("biomarker_bar_plot.pdf", bar_plot, width = 14, height = 9, dpi = 400)
   }
   
   log_message("Biomarker visualizations saved")
