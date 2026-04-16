@@ -25,7 +25,7 @@ set.seed(123)
 # --- 1. Load pre-processed common datasets (from previous scripts) ---
 input_file <- "common_pharmaco_datasets.rds"
 if (!file.exists(input_file)) {
-  stop("Input file missing: ", input_file, ". Run previous preprocessing scripts first.")
+  stop("Input file missing: ", input_file, ".Obtain through intersectP function as done in data concordance analysis.")
 }
 
 log_message("Loading common PharmacoSet objects")
