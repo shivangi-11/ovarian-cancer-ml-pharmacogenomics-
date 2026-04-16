@@ -203,6 +203,3 @@ for (drug in ranked_drugs) {
   )
 }
 
-write.csv(summary_stats, "results/tables/preprocessing_summary.csv", row.names = FALSE)
-saveRDS(summary_stats, "results/tables/preprocessing_summary.rds")
-
