@@ -126,6 +126,22 @@ for (drug in drugs) {
 }
 
 names(c_index) <- names(mc_index) <- drugs
+# Generate bar plot
+mp <- barplot(index_matrix, beside = TRUE, col = c("purple", "orange"), 
+              ylim = c(0, 1), ylab = "Concordance Index", 
+              space = c(0.15, 0.5), border = NA, main = "mCI")
+
+# Correctly label drugs only once (positioned between pairs of bars)
+midpoints <- colMeans(mp)  # Get middle positions of each pair of bars
+text(midpoints, par("usr")[3] - 0.05, labels = drugs, srt = 45, adj = c(1.1, 1.1), 
+     xpd = TRUE, cex = 0.8)
+
+# Add reference line at C-index = 0.7
+abline(h = 0.7, lty = 2)
+
+
+# Print bar positions (for debugging)
+print(mp)
 
 # Create ranking
 ranking_df <- data.frame(
