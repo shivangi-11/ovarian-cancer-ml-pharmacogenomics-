@@ -56,7 +56,7 @@ expr_subset <- t(expr_subset)
 # ------------------------------
 # STEP 5: Boxplot
 # ------------------------------
-png("plots/biomarker_expression.png", width=4000, height=2500, res=600)
+png("biomarker_expression.png", width=4000, height=2500, res=600)
 
 par(mar=c(8,5,4,2))
 boxplot(expr_subset,
@@ -72,7 +72,7 @@ dev.off()
 # ------------------------------
 cor_mat <- cor(expr_subset)
 
-png("plots/biomarker_correlation.png", width=4000, height=3000, res=600)
+png("biomarker_correlation.png", width=4000, height=3000, res=600)
 
 heatmap(cor_mat,
         col=colorRampPalette(c("navy","white","red"))(100),
